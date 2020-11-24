@@ -1,0 +1,5 @@
+type Chat @model {
+  id: ID!
+  comment: String!
+  owner: String
+}
