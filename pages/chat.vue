@@ -1,16 +1,18 @@
 <template>
   <div style="max-width: 800px">
-    <v-text-field
-      v-model="form.comment"
-      label="コメント"
-      placeholder="ここにコメントを書きましょう"
-      outlined
-      class="mx-auto"
-      append-icon="mdi-check-bold"
-      style="max-width: 100%; box-sizing: border-box"
-      @keydown="onEnter"
-      @click:append="createChat"
-    ></v-text-field>
+    <amplify-authenticator>
+      <v-text-field
+        v-model="form.comment"
+        label="コメント"
+        placeholder="ここにコメントを書きましょう"
+        outlined
+        class="mx-auto"
+        append-icon="mdi-check-bold"
+        style="max-width: 100%; box-sizing: border-box"
+        @keydown="onEnter"
+        @click:append="createChat"
+      ></v-text-field>
+    </amplify-authenticator>
 
     <v-card v-for="(item, index) in items" :key="index" tile>
       <v-list-item two-line>
@@ -20,12 +22,17 @@
         </v-list-item-content>
       </v-list-item>
     </v-card>
+
+    <v-card>
+      <amplify-sign-out v-if="logoutBtn"></amplify-sign-out>
+    </v-card>
   </div>
 </template>
 <script>
-import { API } from 'aws-amplify' // Amplifyライブラリを読み込み
-import { createChat } from '~/graphql/mutations' // GraphQL Mutation（データをエンドポイントに送信する構文?）
-import { listChats } from '~/graphql/queries' // GraphQL Query（データを読み込む構文？）
+import { API } from 'aws-amplify'
+import { onAuthUIStateChange } from '@aws-amplify/ui-components'
+import { createChat } from '~/graphql/mutations'
+import { listChats } from '~/graphql/queries'
 import { onCreateChat } from '~/graphql/subscriptions'
 export default {
   data() {
@@ -34,44 +41,52 @@ export default {
         comment: '',
       },
       items: [],
+      logoutBtn: false,
     }
   },
   created() {
     this.getChatList()
-    this.subscribe() // 追加
+    this.subscribe()
+
+    onAuthUIStateChange((authState, authData) => {
+      if (authState === 'signedin') {
+        this.getChatList()
+        this.subscribe()
+        this.logoutBtn = true
+      } else {
+        this.items = []
+        this.logoutBtn = false
+      }
+    })
   },
   methods: {
     async createChat() {
-      // コメントを送信する
-      const comment = this.form.comment // コメント入力値を取得
-      if (!comment) return // 空のときは処理しない
-      const chat = { comment } // 送信用のJSONを作成
-      // 送信処理
+      const comment = this.form.comment
+      if (!comment) return
+      const chat = { comment }
+
       await API.graphql({
-        query: createChat, // GraphQL Mutation
-        variables: { input: chat }, // 送信データ
+        query: createChat,
+        variables: { input: chat },
       })
-      this.form.comment = '' // 送信後にテキストフィールドを空に。
+      this.form.comment = ''
     },
     onEnter(event) {
-      // ここはおまけ。（Enterを押したときもコメントを送信したかったので記述）
       if (event.keyCode !== 13) return
       this.createChat()
     },
     async getChatList() {
-      // コメント一覧を取得
       const chatList = await API.graphql({
-        query: listChats, // GraphQL Query
+        query: listChats,
       })
-      this.items = chatList.data.listChats.items // 読み込みしたデータを一覧に表示
+      this.items = chatList.data.listChats.items
     },
     subscribe() {
       API.graphql({ query: onCreateChat }).subscribe({
         next: (eventData) => {
-          // コメントが送信されて追加されたとき、送信内容を一覧に追加
-          const chat = eventData.value.data.onCreateChat // データを読み込み
-          if (this.items.some((item) => item.comment === chat.comment)) return // すでに表示されているデータは無視
-          this.items = [...this.items, chat] // 新しいデータを追加
+          const chat = eventData.value.data.onCreateChat
+          if (this.items.some((item) => item.comment === chat.comment)) return
+          this.items = [...this.items, chat]
         },
       })
     },
